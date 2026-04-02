@@ -1,0 +1,253 @@
+:root {
+  color-scheme: dark;
+  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  background:
+    radial-gradient(circle at top right, rgba(76, 255, 147, 0.15), transparent 32%),
+    radial-gradient(circle at bottom left, rgba(255, 184, 77, 0.12), transparent 28%),
+    #0d1117;
+  color: #e6edf3;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 340px;
+  min-height: 438px;
+  background: transparent;
+}
+
+button {
+  font: inherit;
+}
+
+.popup-shell {
+  position: relative;
+  min-height: 438px;
+  padding: 14px;
+  overflow: hidden;
+}
+
+.noise {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 18px 18px;
+  mask-image: radial-gradient(circle at center, black, transparent 80%);
+  pointer-events: none;
+}
+
+.hero,
+.stats-panel,
+.scope-panel,
+.action-panel {
+  position: relative;
+  z-index: 1;
+}
+
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #8b949e;
+}
+
+.hero h1 {
+  margin: 0;
+  font-family: 'Sora', 'IBM Plex Sans', sans-serif;
+  font-size: 22px;
+  line-height: 0.94;
+}
+
+.status-chip {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.status-idle {
+  color: #8b949e;
+}
+
+.status-recording,
+.status-stopping {
+  color: #4cff93;
+  box-shadow: 0 0 18px rgba(76, 255, 147, 0.2);
+}
+
+.stats-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.stat,
+.scope-panel,
+.action-panel {
+  background: rgba(21, 27, 35, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  backdrop-filter: blur(10px);
+}
+
+.stat {
+  padding: 10px 8px;
+}
+
+.stat span {
+  display: block;
+  color: #8b949e;
+  font-size: 11px;
+}
+
+.stat strong {
+  display: block;
+  margin-top: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.scope-panel,
+.action-panel {
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.section-head span {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.section-head small {
+  color: #8b949e;
+  font-size: 11px;
+}
+
+.scope-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.scope-card {
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
+  padding: 11px;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.scope-card.wide {
+  grid-column: 1 / -1;
+}
+
+.scope-card:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(76, 255, 147, 0.45);
+}
+
+.scope-card.selected {
+  border-color: rgba(76, 255, 147, 0.7);
+  background: linear-gradient(135deg, rgba(76, 255, 147, 0.12), rgba(255, 184, 77, 0.08));
+}
+
+.scope-card strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.scope-card:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 8px;
+}
+
+.primary {
+  width: 100%;
+  border: 0;
+  border-radius: 14px;
+  padding: 13px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #08120d;
+  background: linear-gradient(135deg, #4cff93, #9ffcc3);
+  cursor: pointer;
+}
+
+.secondary {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 13px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e6edf3;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+
+.secondary:hover:not(:disabled) {
+  border-color: rgba(76, 255, 147, 0.4);
+}
+
+.secondary:disabled {
+  opacity: 0.8;
+  cursor: wait;
+}
+
+.primary.danger {
+  color: white;
+  background: linear-gradient(135deg, #ff5d73, #ff8d6e);
+}
+
+.primary:disabled {
+  cursor: wait;
+  opacity: 0.8;
+}
+
+.error {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.error {
+  color: #ff8d9d;
+}

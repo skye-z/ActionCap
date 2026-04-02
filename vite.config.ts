@@ -1,0 +1,17 @@
+import { crx } from '@crxjs/vite-plugin'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+import manifest from './src/manifest'
+
+export default defineConfig({
+  plugins: [react(), crx({ manifest })],
+  build: {
+    sourcemap: true,
+    rollupOptions: {
+      input: {
+        popup: new URL('./popup.html', import.meta.url).pathname,
+        results: new URL('./results.html', import.meta.url).pathname,
+      },
+    },
+  },
+})
