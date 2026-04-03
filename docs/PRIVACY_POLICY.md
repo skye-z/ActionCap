@@ -99,8 +99,3 @@ ActionCap is not designed for or marketed to children under 13 years of age.
 ## Changes to This Policy
 
 This privacy policy may be updated when the extension's data handling practices change. Significant changes will be noted in the extension's update log.
-
-## Contact
-
-- Email: `support@example.com`
-- Website: `https://example.com/actioncap/support`
