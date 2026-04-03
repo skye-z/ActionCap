@@ -2,12 +2,26 @@ import { defineManifest } from '@crxjs/vite-plugin'
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'ActionCap',
+  default_locale: 'en',
+  name: '__MSG_extensionName__',
+  short_name: '__MSG_extensionShortName__',
   version: '0.1.0',
-  description: 'Record browser actions, requests, responses, and replay sessions across tabs.',
+  description: '__MSG_extensionDescription__',
+  icons: {
+    16: 'icons/icon16.png',
+    32: 'icons/icon32.png',
+    48: 'icons/icon48.png',
+    128: 'icons/icon128.png',
+  },
   action: {
-    default_title: 'ActionCap',
+    default_title: '__MSG_actionDefaultTitle__',
     default_popup: 'popup.html',
+    default_icon: {
+      16: 'icons/icon16.png',
+      32: 'icons/icon32.png',
+      48: 'icons/icon48.png',
+      128: 'icons/icon128.png',
+    },
   },
   background: {
     service_worker: 'src/background/service-worker.ts',

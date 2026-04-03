@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
+import { applyDocumentLocale, t } from '../common/i18n'
 import { ACTIVE_RECORDING_KEY, createEmptyRecordingStateSnapshot, snapshotFromActiveRecording } from '../common/recording-state'
 import type { ActiveRecordingState, RecordingScope, RecordingStateSnapshot, RuntimeResponse } from '../common/types'
 
-const scopes: Array<{ value: RecordingScope; title: string }> = [
-  { value: 'current-tab', title: '当前 Tab' },
-  { value: 'cross-tab', title: '跨 Tab' },
-  { value: 'all-windows', title: '所有窗口' },
+const scopes: Array<{ value: RecordingScope; titleKey: Parameters<typeof t>[0]; descriptionKey?: Parameters<typeof t>[0]; fullWidth?: boolean }> = [
+  { value: 'current-tab', titleKey: 'scope_current_tab', fullWidth: true },
+  { value: 'cross-tab', titleKey: 'scope_cross_tab', descriptionKey: 'scope_cross_tab_desc' },
+  { value: 'all-windows', titleKey: 'scope_all_windows', descriptionKey: 'scope_all_windows_desc' },
 ]
 
 const emptyState = createEmptyRecordingStateSnapshot()
@@ -16,6 +17,11 @@ export function PopupApp() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    applyDocumentLocale()
+    document.title = t('popup_title')
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -129,44 +135,45 @@ export function PopupApp() {
       <header className="hero">
         <div>
           <p className="eyebrow">ActionCap</p>
-          <h1>Browser Forensics</h1>
+          <h1>{t('popup_hero_title')}</h1>
         </div>
-        <div className={`status-chip status-${state.status}`}>{state.active ? 'Recording' : 'Idle'}</div>
+        <div className={`status-chip status-${state.status}`}>{state.active ? t('status_recording') : t('status_idle')}</div>
       </header>
 
       <section className="stats-panel">
         <div className="stat">
-          <span>时长</span>
+          <span>{t('stat_duration')}</span>
           <strong>{durationLabel}</strong>
         </div>
         <div className="stat">
-          <span>Tab</span>
+          <span>{t('stat_sessions')}</span>
           <strong>{state.stats.tabCount}</strong>
         </div>
         <div className="stat">
-          <span>操作</span>
+          <span>{t('stat_actions')}</span>
           <strong>{state.stats.actionCount}</strong>
         </div>
         <div className="stat">
-          <span>网络</span>
+          <span>{t('stat_network')}</span>
           <strong>{state.stats.networkCount}</strong>
         </div>
       </section>
 
       <section className="scope-panel">
         <div className="section-head">
-          <span>录制范围</span>
-          <small>{state.active ? '录制中已锁定' : '点击切换'}</small>
+          <span>{t('recording_scope')}</span>
+          <small>{state.active ? t('recording_locked') : t('click_to_switch')}</small>
         </div>
         <div className="scope-grid">
           {scopes.map((item) => (
             <button
               key={item.value}
-              className={`scope-card ${scope === item.value ? 'selected' : ''} ${item.value === 'all-windows' ? 'wide' : ''}`}
+              className={`scope-card ${scope === item.value ? 'selected' : ''} ${item.fullWidth ? 'full' : ''}`}
               onClick={() => setScope(item.value)}
               disabled={state.active}
             >
-              <strong>{item.title}</strong>
+              <strong>{t(item.titleKey)}</strong>
+              {item.descriptionKey ? <small>{t(item.descriptionKey)}</small> : null}
             </button>
           ))}
         </div>
@@ -175,10 +182,10 @@ export function PopupApp() {
       <section className="action-panel">
         <div className="action-row">
           <button className={`primary ${state.active ? 'danger' : ''}`} onClick={state.active ? onStop : onStart} disabled={busy}>
-            {busy ? '处理中...' : state.active ? '结束录制' : '开始录制'}
+            {busy ? t('action_processing') : state.active ? t('action_stop_recording') : t('action_start_recording')}
           </button>
           <button className="secondary" onClick={onOpenSessions} disabled={busy}>
-            查看会话
+            {t('action_view_sessions')}
           </button>
         </div>
         {error ? <p className="error">{error}</p> : null}

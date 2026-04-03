@@ -1,0 +1,18 @@
+{
+  "extensionName": {
+    "message": "ActionCap",
+    "description": "Extension display name"
+  },
+  "extensionShortName": {
+    "message": "ActionCap",
+    "description": "Short extension name"
+  },
+  "extensionDescription": {
+    "message": "Capture browser actions, requests, responses, and rrweb replay across tabs for debugging.",
+    "description": "Short description shown in the browser and store metadata"
+  },
+  "actionDefaultTitle": {
+    "message": "ActionCap",
+    "description": "Default action title"
+  }
+}

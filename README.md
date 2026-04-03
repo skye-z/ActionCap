@@ -11,6 +11,23 @@ npm run build
 
 Load the unpacked extension from `dist/` in Chrome or Edge developer mode.
 
+## Edge Store Release
+
+```bash
+npm run edge:package
+```
+
+The Edge submission zip is written to `artifacts/edge/`.
+
+Release assets and submission docs are prepared in:
+
+1. `docs/edge/PUBLISHING.md`
+2. `docs/edge/STORE_LISTING.md`
+3. `docs/edge/PRIVACY_POLICY.md`
+4. `docs/edge/PERMISSION_JUSTIFICATION.md`
+5. `docs/edge/TESTING_NOTES.md`
+6. `store-assets/edge/`
+
 ## Current MVP
 
 1. Popup can start and stop recording.

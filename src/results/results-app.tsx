@@ -1,13 +1,13 @@
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import rrwebPlayer from 'rrweb-player'
-import { db, getSessionBundle, listSessions } from '../common/storage'
+import { applyDocumentLocale, getLocaleTag, t } from '../common/i18n'
+import { buildSessionArchive, db, getSessionBundle, importSessionArchive, listSessions } from '../common/storage'
 import { getScopeLabel, getSessionDisplayName } from '../common/session-utils'
 import type {
   NetworkEvent,
   ReplayEventRecord,
   SessionBundle,
   SessionRecord,
-  TrackedTabRecord,
   UserActionEvent,
 } from '../common/types'
 import {
@@ -44,12 +44,19 @@ type PayloadModalState = {
   truncated?: boolean
 }
 
+type ReplayPlayerInstance = rrwebPlayer & {
+  $set: (props: { width: number; height: number }) => void
+}
+
 const params = new URLSearchParams(window.location.search)
 const PAYLOAD_MODAL_THRESHOLD_BYTES = 1024
+const REPLAY_CONTROLLER_HEIGHT = 80
+const REPLAY_VIEWPORT_WIDTH_OFFSET = 360
+const REPLAY_VIEWPORT_HEIGHT_OFFSET = 300
 
 function formatDate(ts?: number) {
   if (!ts) return '--'
-  return new Date(ts).toLocaleString()
+  return new Date(ts).toLocaleString(getLocaleTag())
 }
 
 function formatDuration(start?: number, end?: number) {
@@ -57,12 +64,12 @@ function formatDuration(start?: number, end?: number) {
   const diff = (end ?? Date.now()) - start
   const seconds = Math.max(0, Math.floor(diff / 1000))
   const minutes = Math.floor(seconds / 60)
-  return `${minutes}m ${seconds % 60}s`
+  return t('duration_compact', { minutes, seconds: seconds % 60 })
 }
 
 function formatDurationMs(durationMs?: number) {
   if (durationMs == null) return '--'
-  return `${durationMs} ms`
+  return t('duration_ms', { duration: durationMs })
 }
 
 function formatBytes(bytes: number) {
@@ -92,27 +99,45 @@ function matchesSession(session: SessionRecord, keyword: string) {
     .includes(lowered)
 }
 
+function getSessionListMeta(session: SessionRecord) {
+  return t('session_meta', { duration: formatDuration(session.startTime, session.endTime), tabs: session.tabCount, actions: session.actionCount })
+}
+
+function getSessionOverviewMeta(session: SessionRecord) {
+  return t('session_meta', { duration: formatDuration(session.startTime, session.endTime), tabs: session.tabCount, actions: session.actionCount })
+}
+
 function summarizeAction(event: UserActionEvent) {
   switch (event.type) {
     case 'click':
     case 'dblclick':
     case 'contextmenu':
-      return `${event.type} ${event.selector ?? event.element?.tagName ?? 'element'}`
+      return t(`event_${event.type}` as const, { target: event.selector ?? event.element?.tagName ?? 'element' })
     case 'input':
     case 'change':
-      return `${event.type} ${event.selector ?? event.element?.tagName ?? 'field'}`
+      return t(`event_${event.type}` as const, { target: event.selector ?? event.element?.tagName ?? 'field' })
+    case 'submit':
+      return t('event_submit', { target: event.selector ?? event.element?.tagName ?? 'form' })
+    case 'keydown':
+      return t('event_keydown', { target: event.selector ?? event.element?.tagName ?? 'field' })
+    case 'keyup':
+      return t('event_keyup', { target: event.selector ?? event.element?.tagName ?? 'field' })
+    case 'focus':
+      return t('event_focus', { target: event.selector ?? event.element?.tagName ?? 'field' })
+    case 'blur':
+      return t('event_blur', { target: event.selector ?? event.element?.tagName ?? 'field' })
     case 'scroll':
-      return `scroll Y=${event.scroll?.y ?? 0}`
+      return t('event_scroll', { value: event.scroll?.y ?? 0 })
     case 'navigation':
-      return `navigate ${event.url}`
+      return t('event_navigation', { url: event.url })
     case 'tab-activated':
-      return 'tab activated'
+      return t('event_tab_activated')
     case 'tab-created':
-      return 'tab created'
+      return t('event_tab_created')
     case 'tab-removed':
-      return 'tab removed'
+      return t('event_tab_removed')
     case 'window-focus':
-      return 'window focused'
+      return t('event_window_focus')
     default:
       return `${event.type} ${event.selector ?? ''}`.trim()
   }
@@ -126,6 +151,45 @@ function summarizeNetworkPair(pair: NetworkPair) {
   if (!response) return `${method} ${url} -> pending`
   if (response.errorText) return `${method} ${url} -> ${response.errorText}`
   return `${method} ${url} -> ${response.status ?? '--'} ${response.statusText ?? ''}`.trim()
+}
+
+function getNetworkItemTitle(pair: NetworkPair) {
+  const url = pair.request?.url ?? pair.response?.url ?? '--'
+  if (url === '--') return url
+
+  try {
+    const parsed = new URL(url)
+    const method = (pair.request?.method ?? pair.response?.method ?? 'GET').toUpperCase()
+    const search = method === 'GET' ? '' : parsed.search
+    return `${parsed.host}${parsed.pathname || '/'}${search}` || parsed.host || url
+  } catch {
+    return url
+  }
+}
+
+function getTimelineTags(item: TimelineItem) {
+  if (item.kind === 'action') {
+    return [{ label: t('timeline_tag_action'), className: `kind-pill ${item.kind}` }]
+  }
+
+  const pair = item.payload as NetworkPair
+  const request = pair.request ?? pair.response
+  const tags: Array<{ label: string; className: string }> = [
+    { label: request?.method ?? 'GET', className: 'kind-pill method' },
+  ]
+
+  if (pair.response?.status != null) {
+    const statusClass =
+      pair.response.status >= 500 ? 'status-error' :
+      pair.response.status >= 400 ? 'status-warn' :
+      'status-ok'
+
+    tags.push({ label: String(pair.response.status), className: `kind-pill ${statusClass}` })
+  } else if (pair.response?.errorText) {
+    tags.push({ label: t('timeline_tag_error'), className: 'kind-pill status-error' })
+  }
+
+  return tags
 }
 
 function buildNetworkPairs(networkEvents: NetworkEvent[]) {
@@ -264,38 +328,69 @@ function CodeBlock({ content, language, className = '' }: { content: string; lan
   return <pre className={`payload-block syntax-block ${className}`.trim()} data-language={language}><code>{renderPayloadSyntax(content, language)}</code></pre>
 }
 
-function ReplayPanel({ tab, replayEvents }: { tab?: TrackedTabRecord; replayEvents: ReplayEventRecord[] }) {
+function ReplayPanel({ replayEvents }: { replayEvents: ReplayEventRecord[] }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const playerRef = useRef<rrwebPlayer | null>(null)
+  const playerRef = useRef<ReplayPlayerInstance | null>(null)
 
   useEffect(() => {
-    if (!containerRef.current) return
-    containerRef.current.innerHTML = ''
+    const container = containerRef.current
+    if (!container) return
+
+    container.replaceChildren()
     playerRef.current = null
+
     const events = replayEvents.map((item) => item.payload).filter(Boolean) as any[]
     if (!events.length) return
 
-    playerRef.current = new rrwebPlayer({
-      target: containerRef.current,
-      props: { events, autoPlay: false, width: 960, height: 540 },
-    })
+    const getPlayerSize = () => {
+      const width = Math.max(window.innerWidth - REPLAY_VIEWPORT_WIDTH_OFFSET, 360)
+      const totalHeight = Math.max(window.innerHeight - REPLAY_VIEWPORT_HEIGHT_OFFSET, 320)
+      return {
+        width,
+        height: Math.max(totalHeight - REPLAY_CONTROLLER_HEIGHT, 220),
+      }
+    }
+
+    const player = new rrwebPlayer({
+      target: container,
+      props: { events, autoPlay: false, width: getPlayerSize().width, height: getPlayerSize().height, maxScale: 0 },
+    }) as ReplayPlayerInstance
+    playerRef.current = player
+
+    let resizeFrame = 0
+    const syncPlayerSize = () => {
+      resizeFrame = 0
+      const currentContainer = containerRef.current
+      const currentPlayer = playerRef.current
+      if (!currentContainer || !currentPlayer) return
+
+      const { width, height } = getPlayerSize()
+      currentPlayer.$set({ width, height })
+      currentPlayer.triggerResize()
+    }
+
+    const scheduleSync = () => {
+      if (resizeFrame) cancelAnimationFrame(resizeFrame)
+      resizeFrame = window.requestAnimationFrame(syncPlayerSize)
+    }
+
+    const observer = new ResizeObserver(scheduleSync)
+    observer.observe(container)
+    window.addEventListener('resize', scheduleSync)
+    scheduleSync()
 
     return () => {
-      containerRef.current?.replaceChildren()
+      if (resizeFrame) cancelAnimationFrame(resizeFrame)
+      observer.disconnect()
+      window.removeEventListener('resize', scheduleSync)
+      container.replaceChildren()
       playerRef.current = null
     }
   }, [replayEvents])
 
   return (
     <div className="replay-layout">
-      <div className="replay-head">
-        <div>
-          <p className="eyebrow">Replay</p>
-          <h2>{tab?.title ?? '未选择 Tab'}</h2>
-          <span>{tab?.url ?? '请选择顶部 Tab 以查看 rrweb 回放。'}</span>
-        </div>
-      </div>
-      {replayEvents.length ? <div className="replay-stage" ref={containerRef} /> : <div className="empty-state">当前 Tab 没有可用回放数据。该页面可能不支持脚本注入，或录制尚未产生快照。</div>}
+      {replayEvents.length ? <div className="replay-stage" ref={containerRef} /> : <div className="empty-state">{t('no_replay_data')}</div>}
     </div>
   )
 }
@@ -309,9 +404,28 @@ function HeaderTable({ title, headers }: { title: string; headers?: Record<strin
   return (
     <section className="detail-section">
       <h3>{title}</h3>
-      {entries.length ? <div className="header-table">{entries.map(([key, value]) => <div key={key} className="header-row"><span>{key}</span><code>{value}</code></div>)}</div> : <div className="detail-empty">无</div>}
+      {entries.length ? <div className="header-table">{entries.map(([key, value]) => <div key={key} className="header-row"><span>{key}</span><code>{value}</code></div>)}</div> : <div className="detail-empty">{t('none')}</div>}
     </section>
   )
+}
+
+function getUrlQueryEntries(url?: string) {
+  if (!url) return []
+
+  try {
+    const parsed = new URL(url)
+    const grouped = new Map<string, string[]>()
+
+    parsed.searchParams.forEach((value, key) => {
+      const values = grouped.get(key) ?? []
+      values.push(value === '' ? t('empty_value') : value)
+      grouped.set(key, values)
+    })
+
+    return [...grouped.entries()].map(([key, values]) => ({ key, value: values.join('\n') }))
+  } catch {
+    return []
+  }
 }
 
 function PayloadViewer({
@@ -334,7 +448,7 @@ function PayloadViewer({
   onOpenFullPayload: (next: PayloadModalState) => void
 }) {
   if (!body) {
-    return <section className="detail-section"><h3>{title}</h3><div className="detail-empty">无</div></section>
+    return <section className="detail-section"><h3>{title}</h3><div className="detail-empty">{t('none')}</div></section>
   }
 
   const sizeBytes = getPayloadSize(body)
@@ -352,14 +466,14 @@ function PayloadViewer({
       </div>
       {hiddenByDefault ? (
         <div className="payload-shell payload-shell-hidden">
-          <p className="payload-hidden-hint">内容超过 1KB，默认隐藏。点击按钮在模态框中查看格式化后的完整内容。</p>
+          <p className="payload-hidden-hint">{t('payload_hidden_hint')}</p>
           <div className="payload-meta-row">
             <span>{formatBytes(sizeBytes)}</span>
             {bodyEncoding ? <span>{bodyEncoding}</span> : null}
-            {truncated ? <span>已截断保存</span> : null}
+            {truncated ? <span>{t('truncated_saved')}</span> : null}
           </div>
           <button type="button" className="payload-open-button" onClick={() => onOpenFullPayload({ title, content: displayContent, language, sizeBytes, bodyEncoding, truncated, contentTypeLabel })}>
-            查看完整内容
+            {t('view_full_payload')}
           </button>
         </div>
       ) : (
@@ -367,7 +481,7 @@ function PayloadViewer({
           <div className="payload-meta-row">
             <span>{formatBytes(sizeBytes)}</span>
             {bodyEncoding ? <span>{bodyEncoding}</span> : null}
-            {truncated ? <span>已截断保存</span> : null}
+            {truncated ? <span>{t('truncated_saved')}</span> : null}
           </div>
           <CodeBlock content={displayContent} language={language} />
         </div>
@@ -390,16 +504,16 @@ function PayloadModal({ payload, onClose }: { payload: PayloadModalState; onClos
       <div className="payload-modal-card detail-panel" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={payload.title}>
         <div className="payload-modal-header">
           <div>
-            <p className="eyebrow">Payload viewer</p>
+            <p className="eyebrow">{t('payload_viewer')}</p>
             <h3>{payload.title}</h3>
             <div className="payload-meta-row payload-meta-row-modal">
               <span>{payload.contentTypeLabel}</span>
               <span>{formatBytes(payload.sizeBytes)}</span>
               {payload.bodyEncoding ? <span>{payload.bodyEncoding}</span> : null}
-              {payload.truncated ? <span>已截断保存</span> : null}
+              {payload.truncated ? <span>{t('truncated_saved')}</span> : null}
             </div>
           </div>
-          <button type="button" className="payload-modal-close" onClick={onClose}>关闭</button>
+          <button type="button" className="payload-modal-close" onClick={onClose}>{t('action_close')}</button>
         </div>
         <CodeBlock content={payload.content} language={payload.language} className="payload-modal-code" />
       </div>
@@ -410,25 +524,25 @@ function PayloadModal({ payload, onClose }: { payload: PayloadModalState; onClos
 function ActionDetail({ event }: { event: UserActionEvent }) {
   return (
     <div className="detail-panel">
-      <div className="detail-head"><span className="kind-pill action">action</span><strong>{formatDate(event.ts)}</strong></div>
+      <div className="detail-head"><span className="kind-pill action">{t('timeline_tag_action')}</span><strong>{formatDate(event.ts)}</strong></div>
       <section className="detail-section">
-        <h3>操作概览</h3>
-        <MetaGrid items={[{ label: '类型', value: event.type }, { label: 'Tab', value: event.tabId }, { label: 'URL', value: event.url }, { label: 'Selector', value: event.selector }]} />
+        <h3>{t('action_overview')}</h3>
+        <MetaGrid items={[{ label: t('label_type'), value: event.type }, { label: t('label_tab'), value: event.tabId }, { label: t('label_url'), value: event.url }, { label: t('label_selector'), value: event.selector }]} />
       </section>
       <section className="detail-section">
-        <h3>元素与输入</h3>
+        <h3>{t('action_elements_input')}</h3>
         <MetaGrid items={[
-          { label: '标签', value: event.element?.tagName },
-          { label: '文本', value: event.element?.text },
-          { label: 'ID', value: event.element?.id },
-          { label: 'Class', value: event.element?.className },
-          { label: '坐标', value: event.coordinates ? `${event.coordinates.x}, ${event.coordinates.y}` : undefined },
-          { label: '滚动', value: event.scroll ? `${event.scroll.x}, ${event.scroll.y}` : undefined },
-          { label: '值', value: event.value },
-          { label: '已脱敏', value: event.masked ? 'yes' : 'no' },
+          { label: t('label_tag'), value: event.element?.tagName },
+          { label: t('label_text'), value: event.element?.text },
+          { label: t('label_id'), value: event.element?.id },
+          { label: t('label_class'), value: event.element?.className },
+          { label: t('label_coordinates'), value: event.coordinates ? `${event.coordinates.x}, ${event.coordinates.y}` : undefined },
+          { label: t('label_scroll'), value: event.scroll ? `${event.scroll.x}, ${event.scroll.y}` : undefined },
+          { label: t('label_value'), value: event.value },
+          { label: t('label_masked'), value: event.masked ? t('yes') : t('no') },
         ]} />
       </section>
-      {event.metadata ? <section className="detail-section"><h3>附加信息</h3><CodeBlock content={JSON.stringify(event.metadata, null, 2)} language="json" /></section> : null}
+      {event.metadata ? <section className="detail-section"><h3>{t('action_metadata')}</h3><CodeBlock content={JSON.stringify(event.metadata, null, 2)} language="json" /></section> : null}
     </div>
   )
 }
@@ -440,28 +554,35 @@ function NetworkDetail({ pair, onOpenFullPayload }: { pair: NetworkPair; onOpenF
   const requestBody = pair.request?.requestBody ?? pair.response?.requestBody
   const responseHeaders = pair.response?.responseHeaders
   const responseBody = pair.response?.responseBody
+  const queryEntries = getUrlQueryEntries(request?.url)
 
   return (
     <div className="detail-panel">
-      <div className="detail-head"><span className="kind-pill network">network</span><strong>{formatDate(pair.ts)}</strong></div>
+      <div className="detail-head"><span className="kind-pill network">{t('timeline_tag_network')}</span><strong>{formatDate(pair.ts)}</strong></div>
       <section className="detail-section">
-        <h3>请求</h3>
-        <MetaGrid items={[{ label: '方法', value: request?.method }, { label: 'URL', value: request?.url }, { label: '资源类型', value: request?.resourceType }, { label: '发起方式', value: request?.initiator }, { label: 'Request ID', value: pair.requestId }, { label: 'Tab', value: pair.tabId }]} />
+        <h3>{t('request_section')}</h3>
+        <MetaGrid items={[{ label: t('label_method'), value: request?.method }, { label: t('label_url'), value: request?.url }, { label: t('label_resource_type'), value: request?.resourceType }, { label: t('label_initiator'), value: request?.initiator }, { label: t('label_request_id'), value: pair.requestId }, { label: t('label_tab'), value: pair.tabId }]} />
       </section>
-      <HeaderTable title="请求头" headers={requestHeaders} />
-      <PayloadViewer title="请求体" body={requestBody} headers={requestHeaders} bodyEncoding={pair.request?.bodyEncoding} truncated={pair.request?.truncated} formatter={formatRequestPayload} onOpenFullPayload={onOpenFullPayload} />
+      {queryEntries.length ? (
+        <section className="detail-section">
+          <h3>{t('url_params')}</h3>
+          {queryEntries.length ? <div className="header-table">{queryEntries.map((entry) => <div key={entry.key} className="header-row"><span>{entry.key}</span><code>{entry.value}</code></div>)}</div> : <div className="detail-empty">{t('none')}</div>}
+        </section>
+      ) : null}
+      <HeaderTable title={t('request_headers')} headers={requestHeaders} />
+      <PayloadViewer title={t('request_body')} body={requestBody} headers={requestHeaders} bodyEncoding={pair.request?.bodyEncoding} truncated={pair.request?.truncated} formatter={formatRequestPayload} onOpenFullPayload={onOpenFullPayload} />
       <section className="detail-section">
-        <h3>响应</h3>
-        <MetaGrid items={[{ label: '状态码', value: response?.status }, { label: '状态文本', value: response?.statusText ?? response?.errorText }, { label: '耗时', value: formatDurationMs(response?.durationMs) }, { label: 'MIME', value: response?.mimeType }, { label: '编码', value: response?.bodyEncoding }, { label: '是否截断', value: response?.truncated ? 'yes' : 'no' }]} />
+        <h3>{t('response_section')}</h3>
+        <MetaGrid items={[{ label: t('label_status_code'), value: response?.status }, { label: t('label_status_text'), value: response?.statusText ?? response?.errorText }, { label: t('label_duration'), value: formatDurationMs(response?.durationMs) }, { label: t('label_mime'), value: response?.mimeType }, { label: t('label_encoding'), value: response?.bodyEncoding }, { label: t('label_is_truncated'), value: response?.truncated ? t('yes') : t('no') }]} />
       </section>
-      <HeaderTable title="响应头" headers={responseHeaders} />
-      <PayloadViewer title="响应体" body={responseBody} headers={responseHeaders} mimeType={response?.mimeType} bodyEncoding={response?.bodyEncoding} truncated={response?.truncated} formatter={formatResponsePayload} onOpenFullPayload={onOpenFullPayload} />
+      <HeaderTable title={t('response_headers')} headers={responseHeaders} />
+      <PayloadViewer title={t('response_body')} body={responseBody} headers={responseHeaders} mimeType={response?.mimeType} bodyEncoding={response?.bodyEncoding} truncated={response?.truncated} formatter={formatResponsePayload} onOpenFullPayload={onOpenFullPayload} />
     </div>
   )
 }
 
 function DetailPanel({ selected, onOpenFullPayload }: { selected: TimelineItem | null; onOpenFullPayload: (next: PayloadModalState) => void }) {
-  if (!selected) return <div className="detail-panel empty-state">选择一条事件查看详情。</div>
+  if (!selected) return <div className="detail-panel empty-state">{t('detail_empty')}</div>
   if (selected.kind === 'action') return <ActionDetail event={selected.payload} />
   return <NetworkDetail pair={selected.payload} onOpenFullPayload={onOpenFullPayload} />
 }
@@ -483,10 +604,15 @@ export function ResultsApp() {
   const [renaming, setRenaming] = useState(false)
   const [draftSessionName, setDraftSessionName] = useState('')
   const [payloadModal, setPayloadModal] = useState<PayloadModalState | null>(null)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
   const { bundle, sessions, reload } = useSessionData(sessionId)
   const deferredSearch = useDeferredValue(search)
   const deferredSessionSearch = useDeferredValue(sessionSearch.trim().toLowerCase())
   const session = bundle.session
+
+  useEffect(() => {
+    applyDocumentLocale()
+  }, [])
 
   useEffect(() => {
     if (session) setDraftSessionName(getSessionDisplayName(session))
@@ -497,13 +623,16 @@ export function ResultsApp() {
   }, [session?.id, session?.name, session?.startTime, session?.scope])
 
   useEffect(() => {
+    document.title = session ? t('results_title_with_name', { name: getSessionDisplayName(session) }) : t('results_title')
+  }, [session?.id, session?.name, session?.startTime, session?.scope])
+
+  useEffect(() => {
     setPayloadModal(null)
   }, [sessionId, tabFilter, view, selectedId])
 
   const filteredSessions = useMemo(() => sessions.filter((item) => matchesSession(item, deferredSessionSearch)), [sessions, deferredSessionSearch])
   const timeline = useMemo(() => buildTimeline(bundle, tabFilter, filter, deferredSearch), [bundle, tabFilter, filter, deferredSearch])
   const selected = useMemo(() => timeline.find((item) => item.id === selectedId) ?? timeline[0] ?? null, [timeline, selectedId])
-  const selectedTab = useMemo(() => bundle.tabs.find((tab) => tab.tabId === (tabFilter === 'all' ? selected?.tabId : tabFilter)), [bundle.tabs, selected, tabFilter])
   const replayEvents = useMemo(() => bundle.replayEvents.filter((item) => (tabFilter === 'all' ? item.tabId === selected?.tabId : item.tabId === tabFilter)), [bundle.replayEvents, selected, tabFilter])
 
   const updateView = (next: ResultsView) => {
@@ -528,14 +657,34 @@ export function ResultsApp() {
 
   const onExport = async () => {
     if (!sessionId) return
-    const json = JSON.stringify(bundle, null, 2)
+    const json = JSON.stringify(buildSessionArchive(bundle), null, 2)
     const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `actioncap-${sessionId}.json`
+    link.download = `actioncap-${sessionId}.bxdac`
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  const onOpenImport = () => {
+    importInputRef.current?.click()
+  }
+
+  const onImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const importedSessionId = await importSessionArchive(JSON.parse(text))
+      selectSession(importedSessionId)
+      reload()
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : t('import_failed'))
+    }
   }
 
   const onDelete = async () => {
@@ -555,39 +704,39 @@ export function ResultsApp() {
   return (
     <>
       <div className="results-shell">
-        <aside className="left-rail">
-          <div className="brand-card"><p className="eyebrow">ActionCap</p><h1>Session Atlas</h1><span>左侧仅保留会话导航，顶部负责视图切换与 Tab 导航。</span></div>
-          <div className="session-search"><input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder="搜索会话 / 范围 / 时间" /></div>
-          <section className="session-list">{filteredSessions.map((item) => <button key={item.id} className={`session-card ${sessionId === item.id ? 'selected' : ''}`} onClick={() => selectSession(item.id)}><strong>{getSessionDisplayName(item)}</strong><span>{formatDate(item.startTime)}</span><small>{getScopeLabel(item.scope)}</small><small>{item.actionCount} actions · {Math.floor(item.networkCount / 2)} exchanges</small></button>)}</section>
-        </aside>
+        <div className="left-rail">
+          <div className="session-search"><input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder={t('session_search_placeholder')} /></div>
+          <section className="session-list">{filteredSessions.map((item) => <button key={item.id} className={`session-card ${sessionId === item.id ? 'selected' : ''}`} onClick={() => selectSession(item.id)}><strong>{getSessionDisplayName(item)}</strong><small>{getSessionListMeta(item)}</small></button>)}</section>
+        </div>
 
         <main className="main-panel">
           {session ? (
             <>
               <header className="toolbar">
                 <div>
-                  <p className="eyebrow">Results</p>
-                  {renaming ? <div className="rename-row"><input value={draftSessionName} onChange={(event) => setDraftSessionName(event.target.value)} placeholder="输入会话名称" /><button onClick={onRename}>保存</button><button className="ghost" onClick={() => { setDraftSessionName(getSessionDisplayName(session)); setRenaming(false) }}>取消</button></div> : <h2>{getSessionDisplayName(session)}</h2>}
+                  <p className="eyebrow">{t('results_title')}</p>
+                  {renaming ? <div className="rename-row"><input value={draftSessionName} onChange={(event) => setDraftSessionName(event.target.value)} placeholder={t('rename_placeholder')} /><button onClick={onRename}>{t('action_save')}</button><button className="ghost" onClick={() => { setDraftSessionName(getSessionDisplayName(session)); setRenaming(false) }}>{t('action_cancel')}</button></div> : <h2>{getSessionDisplayName(session)}</h2>}
                   <span>{formatDate(session.startTime)} · {formatDuration(session.startTime, session.endTime)} · {getScopeLabel(session.scope)}</span>
                 </div>
-                <div className="toolbar-actions">{view === 'timeline' ? <><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索操作 / 请求 / URL" /><select value={filter} onChange={(event) => setFilter(event.target.value as FilterKind)}><option value="all">全部</option><option value="actions">仅操作</option><option value="network">仅网络</option><option value="errors">错误</option></select></> : null}<button className="ghost" onClick={() => setRenaming((value) => !value)}>{renaming ? '关闭重命名' : '重命名'}</button><button onClick={onExport}>导出 JSON</button><button className="danger" onClick={onDelete}>删除会话</button></div>
+                <div className="toolbar-actions">{view === 'timeline' ? <><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('search_timeline_placeholder')} /><select value={filter} onChange={(event) => setFilter(event.target.value as FilterKind)}><option value="all">{t('filter_all')}</option><option value="actions">{t('filter_actions')}</option><option value="network">{t('filter_network')}</option><option value="errors">{t('filter_errors')}</option></select></> : null}<button className="ghost" onClick={() => setRenaming((value) => !value)}>{renaming ? t('action_close_rename') : t('action_rename')}</button><button className="ghost" onClick={onOpenImport}>{t('action_import')}</button><button onClick={onExport}>{t('action_export')}</button><button className="danger" onClick={onDelete}>{t('action_delete_session')}</button></div>
               </header>
 
               <section className="results-content-nav">
-                <div className="results-view-tabs"><ViewTabButton active={view === 'timeline'} label="时间线" onClick={() => updateView('timeline')} /><ViewTabButton active={view === 'replay'} label="回放" onClick={() => updateView('replay')} /></div>
-                <div className="top-tab-nav tab-list--top"><button className={`tab-card ${tabFilter === 'all' ? 'selected' : ''}`} onClick={() => setTabFilter('all')}><strong>全部 Tab</strong><span>{bundle.tabs.length} tabs</span></button>{bundle.tabs.map((tab) => <button key={tab.id} className={`tab-card ${tabFilter === tab.tabId ? 'selected' : ''}`} onClick={() => setTabFilter(tab.tabId)}><strong>{tab.title || `Tab ${tab.tabId}`}</strong><span>{tab.url}</span></button>)}</div>
+                <div className="results-view-tabs"><ViewTabButton active={view === 'timeline'} label={t('view_timeline')} onClick={() => updateView('timeline')} /><ViewTabButton active={view === 'replay'} label={t('view_replay')} onClick={() => updateView('replay')} /></div>
+                <div className="top-tab-nav tab-list--top"><button className={`tab-card ${tabFilter === 'all' ? 'selected' : ''}`} onClick={() => setTabFilter('all')}><strong>{t('all_tabs')}</strong><span>{bundle.tabs.length} {t('tabs_lower')}</span></button>{bundle.tabs.map((tab) => <button key={tab.id} className={`tab-card ${tabFilter === tab.tabId ? 'selected' : ''}`} onClick={() => setTabFilter(tab.tabId)}><strong>{tab.title || t('tab_with_id', { id: tab.tabId })}</strong><span>{tab.url}</span></button>)}</div>
               </section>
 
-              {view === 'timeline' ? <div className="content-grid"><section className="timeline-panel"><div className="timeline-list">{timeline.length ? timeline.map((item) => <button key={item.id} className={`timeline-item ${selected?.id === item.id ? 'selected' : ''}`} onClick={() => setSelectedId(item.id)}><div className="timeline-meta"><span className={`kind-pill ${item.kind}`}>{item.kind}</span><small>{formatDate(item.ts)}</small></div><strong>{item.kind === 'action' ? summarizeAction(item.payload as UserActionEvent) : summarizeNetworkPair(item.payload as NetworkPair)}</strong><span>Tab {item.tabId}{item.kind === 'network' && (item.payload as NetworkPair).response?.durationMs != null ? ` · ${formatDurationMs((item.payload as NetworkPair).response?.durationMs)}` : ''}</span></button>) : <div className="empty-state">当前筛选条件下没有事件。</div>}</div></section><DetailPanel selected={selected} onOpenFullPayload={setPayloadModal} /></div> : <ReplayPanel tab={selectedTab} replayEvents={replayEvents} />}
+              {view === 'timeline' ? <div className="content-grid"><section className="timeline-panel"><div className="timeline-list">{timeline.length ? timeline.map((item) => <button key={item.id} className={`timeline-item ${selected?.id === item.id ? 'selected' : ''}`} onClick={() => setSelectedId(item.id)}><div className="timeline-meta"><div className="timeline-tags">{getTimelineTags(item).map((tag) => <span key={`${item.id}-${tag.label}`} className={tag.className}>{tag.label}</span>)}</div><small>{formatDate(item.ts)}</small></div><strong>{item.kind === 'action' ? summarizeAction(item.payload as UserActionEvent) : getNetworkItemTitle(item.payload as NetworkPair)}</strong><span>{t('tab_with_id', { id: item.tabId })}{item.kind === 'network' && (item.payload as NetworkPair).response?.durationMs != null ? ` · ${formatDurationMs((item.payload as NetworkPair).response?.durationMs)}` : ''}</span></button>) : <div className="empty-state">{t('no_timeline_events')}</div>}</div></section><DetailPanel selected={selected} onOpenFullPayload={setPayloadModal} /></div> : <ReplayPanel replayEvents={replayEvents} />}
             </>
           ) : (
             <div className="session-browser">
-              <header className="toolbar session-toolbar"><div><p className="eyebrow">Sessions</p><h2>会话列表</h2><span>{filteredSessions.length} / {sessions.length} 个会话</span></div><div className="toolbar-actions"><input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder="搜索会话 / 范围 / 时间" /></div></header>
-              {filteredSessions.length ? <section className="session-grid">{filteredSessions.map((item) => <button key={item.id} className="session-browser-card" onClick={() => selectSession(item.id)}><div className="session-browser-head"><span className="kind-pill action">{getScopeLabel(item.scope)}</span><small>{formatDate(item.startTime)}</small></div><strong>{getSessionDisplayName(item)}</strong><p>{formatDuration(item.startTime, item.endTime)}</p><div className="session-browser-stats"><span>{item.tabCount} tabs</span><span>{item.actionCount} actions</span><span>{Math.floor(item.networkCount / 2)} exchanges</span></div></button>)}</section> : <div className="empty-state">没有匹配的会话。先开始一次录制，或调整搜索关键词。</div>}
+              <header className="toolbar session-toolbar"><div><p className="eyebrow">{t('sessions_header')}</p><h2>{t('sessions_list_title')}</h2><span>{t('sessions_count', { filtered: filteredSessions.length, total: sessions.length })}</span></div><div className="toolbar-actions"><input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder={t('session_search_placeholder')} /><button className="ghost" onClick={onOpenImport}>{t('action_import')}</button></div></header>
+              {filteredSessions.length ? <section className="session-grid">{filteredSessions.map((item) => <button key={item.id} className="session-browser-card" onClick={() => selectSession(item.id)}><div className="session-browser-head"><span className="kind-pill action">{getScopeLabel(item.scope)}</span><small>{formatDate(item.startTime)}</small></div><strong>{getSessionDisplayName(item)}</strong><p>{getSessionOverviewMeta(item)}</p></button>)}</section> : <div className="empty-state">{t('no_matching_sessions')}</div>}
             </div>
           )}
         </main>
       </div>
+      <input ref={importInputRef} type="file" accept=".bxdac,.json,application/json" hidden onChange={onImport} />
       {payloadModal ? <PayloadModal payload={payloadModal} onClose={() => setPayloadModal(null)} /> : null}
     </>
   )

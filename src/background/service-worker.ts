@@ -1,3 +1,4 @@
+import { t } from '../common/i18n'
 import { db } from '../common/storage'
 import { isProbablyTextMimeType, mergeHeaders, sanitizeHeaders, truncateBody } from '../common/sanitizer'
 import { ACTIVE_RECORDING_KEY, snapshotFromActiveRecording } from '../common/recording-state'
@@ -268,12 +269,12 @@ async function tabsForScope(scope: RecordingScope, startWindowId: number, startT
 
 async function startRecording(scope: RecordingScope) {
   if (activeRecording) {
-    return { ok: false, error: 'Recording is already active.' } satisfies RuntimeResponse
+    return { ok: false, error: t('error_recording_already_active') } satisfies RuntimeResponse
   }
 
   const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (!activeTab?.id) {
-    return { ok: false, error: 'No active tab found.' } satisfies RuntimeResponse
+    return { ok: false, error: t('error_no_active_tab') } satisfies RuntimeResponse
   }
 
   const sessionId = crypto.randomUUID()
@@ -325,7 +326,7 @@ async function startRecording(scope: RecordingScope) {
 
 async function stopRecording() {
   if (!activeRecording) {
-    return { ok: false, error: 'No active recording session.' } satisfies RuntimeResponse
+    return { ok: false, error: t('error_no_active_recording') } satisfies RuntimeResponse
   }
 
   activeRecording.status = 'stopping'
@@ -741,7 +742,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   })()
 })
 
-chrome.debugger.onDetach.addListener((source) => {
+chrome.debugger.onDetach.addListener((source, reason) => {
   void (async () => {
     if (!activeRecording || source.tabId == null) {
       return
@@ -750,5 +751,11 @@ chrome.debugger.onDetach.addListener((source) => {
     activeRecording.debuggerTabIds = activeRecording.debuggerTabIds.filter((tabId) => tabId !== source.tabId)
     await updateTrackedDebuggerState(source.tabId, false)
     await persistActiveState()
+
+    // If the user cancels Chrome's debugging banner, the debugger session is terminated
+    // externally and network capture becomes incomplete. End the recording immediately.
+    if (activeRecording.status !== 'stopping' && reason === 'canceled_by_user') {
+      await stopRecording()
+    }
   })()
 })

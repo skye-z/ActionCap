@@ -158,17 +158,19 @@ button {
 }
 
 .scope-card {
+  display: grid;
+  gap: 6px;
   text-align: left;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
   border-radius: 14px;
-  padding: 11px;
+  padding: 12px;
   color: inherit;
   cursor: pointer;
   transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 
-.scope-card.wide {
+.scope-card.full {
   grid-column: 1 / -1;
 }
 
@@ -186,6 +188,13 @@ button {
   display: block;
   font-size: 13px;
   line-height: 1.2;
+}
+
+.scope-card small {
+  display: block;
+  color: #8b949e;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .scope-card:disabled {

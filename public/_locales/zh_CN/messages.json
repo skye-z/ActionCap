@@ -1,0 +1,18 @@
+{
+  "extensionName": {
+    "message": "ActionCap",
+    "description": "扩展名称"
+  },
+  "extensionShortName": {
+    "message": "ActionCap",
+    "description": "扩展简称"
+  },
+  "extensionDescription": {
+    "message": "记录浏览器操作、请求响应与回放，支持当前 Tab、跨 Tab 和所有窗口。",
+    "description": "用于浏览器和商店的简短描述"
+  },
+  "actionDefaultTitle": {
+    "message": "ActionCap",
+    "description": "浏览器工具栏标题"
+  }
+}
