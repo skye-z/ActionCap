@@ -260,3 +260,31 @@ button {
 .error {
   color: #ff8d9d;
 }
+
+.popup-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 4px 0 2px;
+}
+
+.popup-footer a {
+  color: #8b949e;
+  font-size: 11px;
+  text-decoration: none;
+  transition: color 120ms ease;
+}
+
+.popup-footer a:hover {
+  color: #4cff93;
+}
+
+.footer-sep {
+  color: rgba(139, 148, 158, 0.4);
+  font-size: 11px;
+  user-select: none;
+}

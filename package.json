@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "edge:build": "npm run build",
     "edge:package": "npm run build && node scripts/package-edge.mjs"
   },
   "dependencies": {

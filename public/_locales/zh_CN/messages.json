@@ -8,8 +8,8 @@
     "description": "扩展简称"
   },
   "extensionDescription": {
-    "message": "记录浏览器操作、请求响应与回放，支持当前 Tab、跨 Tab 和所有窗口。",
-    "description": "用于浏览器和商店的简短描述"
+    "message": "记录浏览器活动的调试工具，可捕获页面网络请求与用户操作，并支持会话回放。",
+    "description": "浏览器和商店中显示的简短描述"
   },
   "actionDefaultTitle": {
     "message": "ActionCap",

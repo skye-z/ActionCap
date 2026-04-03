@@ -129,6 +129,8 @@ const messages = {
     timeline_tag_action: '操作',
     timeline_tag_network: '网络',
     timeline_tag_error: '错误',
+    footer_github: 'Github',
+    footer_privacy: '隐私',
   },
   'en-US': {
     popup_title: 'ActionCap Console',
@@ -248,6 +250,8 @@ const messages = {
     timeline_tag_action: 'action',
     timeline_tag_network: 'network',
     timeline_tag_error: 'error',
+    footer_github: 'Github',
+    footer_privacy: 'Privacy',
   },
 } as const
 

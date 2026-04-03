@@ -190,6 +190,14 @@ export function PopupApp() {
         </div>
         {error ? <p className="error">{error}</p> : null}
       </section>
+
+      <footer className="popup-footer">
+        <a href="https://github.com/skye-z/ActionCap" target="_blank" rel="noopener noreferrer">{t('footer_github')}</a>
+        <span className="footer-sep">·</span>
+        <a href="https://github.com/skye-z/ActionCap/releases" target="_blank" rel="noopener noreferrer">v{chrome.runtime.getManifest().version}</a>
+        <span className="footer-sep">·</span>
+        <a href="https://github.com/skye-z/ActionCap/blob/main/docs/PRIVACY_POLICY.md" target="_blank" rel="noopener noreferrer">{t('footer_privacy')}</a>
+      </footer>
     </div>
   )
 }
