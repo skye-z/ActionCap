@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+[![LDO](https://ldo.betax.dev/badge/community)](https://linux.do/)
+
 浏览器活动录制工具，适用于 Edge / Chrome。录制浏览过程中的页面网络请求与用户操作，内置基于 rrweb 的会话回放功能。
 
 ## 功能特性

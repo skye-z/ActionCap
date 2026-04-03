@@ -2,6 +2,8 @@
 
 [中文文档](README_zh.md)
 
+[![LDO](https://ldo.betax.dev/badge/community)](https://linux.do/)
+
 A browser activity recording tool for Edge / Chrome. Captures page network requests and user actions during browsing, with built-in session replay powered by rrweb.
 
 ## Features
