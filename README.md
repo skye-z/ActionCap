@@ -45,7 +45,7 @@ A browser activity recording tool for Edge / Chrome. Captures page network reque
 
 ### Edge Add-ons (Recommended)
 
-Install directly from the [Microsoft Edge Add-ons Store](https://microsoftedge.microsoft.com/addons/detail/actioncap/dckc1jp4j3).
+Install directly from the [Microsoft Edge Add-ons Store](https://microsoftedge.microsoft.com/addons/detail/jgphnnhmpipdkklgebfhfbheagkdipnj).
 
 ### Manual Install
 
