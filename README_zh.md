@@ -41,7 +41,7 @@
 
 ### Edge 应用商店（推荐）
 
-从 [Microsoft Edge 应用商店](https://microsoftedge.microsoft.com/addons/detail/actioncap/dckc1jp4j3) 直接安装。
+从 [Microsoft Edge 应用商店](https://microsoftedge.microsoft.com/addons/detail/jgphnnhmpipdkklgebfhfbheagkdipnj) 直接安装。
 
 ### 手动安装
 
